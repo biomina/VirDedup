@@ -2,6 +2,7 @@
 Verify the deduplication pipeline results independently.
 Reads the intermediate and output files and prints a summary.
 """
+import argparse
 import os
 import sys
 
@@ -133,4 +134,14 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Verify deduplication pipeline results.")
+    parser.add_argument("--input-dir", default=None, help="Input directory (original files)")
+    parser.add_argument("--output-dir", default=None, help="Output directory (all intermediate + final files)")
+    args = parser.parse_args()
+
+    if args.input_dir is not None:
+        config.set_input_dir(args.input_dir)
+    if args.output_dir is not None:
+        config.set_output_dir(args.output_dir)
+
     main()

@@ -583,7 +583,30 @@ def generate_output(remove_edge_copies=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate final deduplicated output files.")
+    parser.add_argument("--deduped-gb-meta", default=None, help="Deduped GenBank metadata CSV")
+    parser.add_argument("--deduped-gi-meta", default=None, help="Deduped GISAID metadata CSV")
+    parser.add_argument("--cross-matches", default=None, help="Cross-database matches CSV")
+    parser.add_argument("--edge-cases", default=None, help="Edge cases CSV")
+    parser.add_argument("--genbank-fasta", default=None, help="Original GenBank FASTA")
+    parser.add_argument("--gisaid-fasta", default=None, help="Original GISAID FASTA")
+    parser.add_argument("--output-dir", default=None, help="Output directory for final files")
     parser.add_argument("--remove-edge-copies", action="store_true", default=False,
                        help="Retain only the GenBank copy for edge-case pairs (remove GISAID side)")
     args = parser.parse_args()
+
+    if args.deduped_gb_meta is not None:
+        config.DEDUPED_GENBANK_METADATA = args.deduped_gb_meta
+    if args.deduped_gi_meta is not None:
+        config.DEDUPED_GISAID_METADATA = args.deduped_gi_meta
+    if args.cross_matches is not None:
+        config.CROSS_MATCHES_CSV = args.cross_matches
+    if args.edge_cases is not None:
+        config.EDGE_CASES_CSV = args.edge_cases
+    if args.genbank_fasta is not None:
+        config.GENBANK_FASTA = args.genbank_fasta
+    if args.gisaid_fasta is not None:
+        config.GISAID_FASTA = args.gisaid_fasta
+    if args.output_dir is not None:
+        config.set_output_dir(args.output_dir)
+
     generate_output(remove_edge_copies=args.remove_edge_copies)

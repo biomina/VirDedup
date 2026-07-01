@@ -40,6 +40,46 @@ FINAL_REMOVED_FASTA   = os.path.join(OUTPUT_DIR, "removed_sequences.fasta")
 FINAL_REMOVED_CSV     = os.path.join(OUTPUT_DIR, "removed_sequences.csv")
 FINAL_REPORT          = os.path.join(OUTPUT_DIR, "deduplication_report.txt")
 
+
+# ── Path helpers for CLI overrides ────────────────────────────────────────
+def set_input_dir(path):
+    """Recompute all input paths after overriding the input directory."""
+    global GENBANK_METADATA, GENBANK_FASTA, GISAID_METADATA, GISAID_FASTA
+    GENBANK_METADATA = os.path.join(path, "genbank_meta.csv")
+    GENBANK_FASTA    = os.path.join(path, "genbank_sequences.fasta")
+    GISAID_METADATA  = os.path.join(path, "gisaid_metadata.xlsx")
+    GISAID_FASTA     = os.path.join(path, "gisaid_sequences.fasta")
+
+
+def set_output_dir(path):
+    """Recompute all output paths after overriding the output directory."""
+    global OUTPUT_DIR
+    global DEDUPED_GENBANK_METADATA, DEDUPED_GENBANK_FASTA
+    global DEDUPED_GISAID_METADATA, DEDUPED_GISAID_FASTA
+    global REMOVED_INTRA_GENBANK_CSV, REMOVED_INTRA_GENBANK_FASTA
+    global REMOVED_INTRA_GISAID_CSV, REMOVED_INTRA_GISAID_FASTA
+    global CROSS_MATCHES_CSV, EDGE_CASES_CSV, CONSIDERED_REJECTED_CSV
+    global FINAL_DEDUP_FASTA, FINAL_DEDUP_METADATA
+    global FINAL_REMOVED_FASTA, FINAL_REMOVED_CSV, FINAL_REPORT
+    OUTPUT_DIR = path
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    DEDUPED_GENBANK_METADATA   = os.path.join(OUTPUT_DIR, "deduped_genbank_metadata.csv")
+    DEDUPED_GENBANK_FASTA      = os.path.join(OUTPUT_DIR, "deduped_genbank_sequences.fasta")
+    DEDUPED_GISAID_METADATA    = os.path.join(OUTPUT_DIR, "deduped_gisaid_metadata.csv")
+    DEDUPED_GISAID_FASTA       = os.path.join(OUTPUT_DIR, "deduped_gisaid_sequences.fasta")
+    REMOVED_INTRA_GENBANK_CSV  = os.path.join(OUTPUT_DIR, "removed_intra_genbank.csv")
+    REMOVED_INTRA_GENBANK_FASTA = os.path.join(OUTPUT_DIR, "removed_intra_genbank.fasta")
+    REMOVED_INTRA_GISAID_CSV   = os.path.join(OUTPUT_DIR, "removed_intra_gisaid.csv")
+    REMOVED_INTRA_GISAID_FASTA = os.path.join(OUTPUT_DIR, "removed_intra_gisaid.fasta")
+    CROSS_MATCHES_CSV          = os.path.join(OUTPUT_DIR, "cross_database_matches.csv")
+    EDGE_CASES_CSV             = os.path.join(OUTPUT_DIR, "edge_cases.csv")
+    CONSIDERED_REJECTED_CSV    = os.path.join(OUTPUT_DIR, "considered_rejected.csv")
+    FINAL_DEDUP_FASTA          = os.path.join(OUTPUT_DIR, "deduplicated_sequences.fasta")
+    FINAL_DEDUP_METADATA       = os.path.join(OUTPUT_DIR, "deduplicated_metadata.csv")
+    FINAL_REMOVED_FASTA        = os.path.join(OUTPUT_DIR, "removed_sequences.fasta")
+    FINAL_REMOVED_CSV          = os.path.join(OUTPUT_DIR, "removed_sequences.csv")
+    FINAL_REPORT               = os.path.join(OUTPUT_DIR, "deduplication_report.txt")
+
 # ── Matching rules ────────────────────────────────────────────────────────
 MIN_SEQUENCE_LENGTH = 7000  # only process near-complete genomes
 

@@ -5,23 +5,30 @@ A deterministic, rule-based pipeline that identifies and removes duplicate viral
 ## Pipeline Stages
 
 ```
-01_intra_database_dedup.py        02_cross_database_match.py        03_generate_output.py
-┌──────────────────────────┐     ┌──────────────────────────┐     ┌──────────────────────────┐
-│ GenBank metadata + FASTA │     │ Deduped GB + GI metadata│      │ Cross-db matches         │
-│ GISAID metadata + FASTA  │ ──> │ Shared hash pairs        │ ──> │ Deduped metadata + FASTA │
-│                          │     │ checked via 6 rules      │     │ Removed sequences        │
-│ Output: deduped per-DB   │     │ Output: match/edge/CR    │     │ Report + verification    │
-└──────────────────────────┘     └──────────────────────────┘     └──────────────────────────┘
+run_pipeline.py  (orchestrator — runs steps 1–3 + verification)
+      │
+      ├── 01_intra_database_dedup.py      per-database dedup (SHA256 hash + core metadata)
+      ├── 02_cross_database_match.py      cross-database matching (6 deterministic rules)
+      ├── 03_generate_output.py           final metadata, FASTA, report
+      └── verify_results.py               independent consistency check
 ```
 
 ## Quick Start
 
 ```bash
 pip install pandas numpy biopython rapidfuzz tqdm openpyxl
-python 01_intra_database_dedup.py
-python 02_cross_database_match.py
-python 03_generate_output.py
-python verify_results.py          # optional: check consistency
+
+# Full pipeline via orchestrator (recommended)
+python run_pipeline.py --input-dir . --output-dir output
+
+# With edge-case copy deduplication
+python run_pipeline.py --input-dir . --output-dir output --remove-edge-copies
+
+# Individual steps (each accepts overridable CLI paths)
+python 01_intra_database_dedup.py --genbank-meta genbank_meta.csv --genbank-fasta genbank_sequences.fasta --gisaid-meta gisaid_metadata.xlsx --gisaid-fasta gisaid_sequences.fasta --output-dir output
+python 02_cross_database_match.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --output-dir output
+python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output [--remove-edge-copies]
+python verify_results.py --input-dir . --output-dir output
 ```
 
 ## Setup
@@ -46,7 +53,7 @@ Place these in the pipeline root directory:
 
 All settings are in `config.py`:
 
-- **Paths** — input and output file locations
+- **Paths** — input and output file locations (overridable via CLI per script, or via `config.set_input_dir()` / `config.set_output_dir()`)
 - **`MIN_SEQUENCE_LENGTH`** — minimum sequence length (default: 7000 bp)
 - **`COUNTRY_NORMALIZATION`** — maps raw country names to standard forms
 - **`HOST_NORMALIZATION`** — maps raw host names (e.g. `Homo sapiens` -> `Human`)
@@ -97,7 +104,7 @@ Assembles the final deduplicated datasets:
 - GenBank-only records -> kept as-is
 - GISAID-only records -> kept as-is
 - Intra-database duplicates -> removed (tracked with kept counterpart)
-- Edge cases and rejected pairs -> tracked in separate files (both sides kept)
+- Edge cases -> kept as-is by default. Pass `--remove-edge-copies` to `03_generate_output.py` (or the orchestrator) to retain only the GenBank copy per edge-case pair, flagging it with `Integration_Status = EDGE`
 
 ## Output Files
 
@@ -106,7 +113,7 @@ All written to `output/`:
 | File | Description |
 |------|-------------|
 | `deduplicated_sequences.fasta` | One sequence per unique entry |
-| `deduplicated_metadata.csv` | Harmonized metadata with Integration_Status (MATCH/GENBANK_ONLY/GISAID_ONLY) |
+| `deduplicated_metadata.csv` | Harmonized metadata with Integration_Status (MATCH / EDGE / GENBANK_ONLY / GISAID_ONLY) |
 | `removed_sequences.fasta` | All removed sequences with original headers |
 | `removed_sequences.csv` | Side-by-side removed + kept metadata with removal reason |
 | `cross_database_matches.csv` | Confirmed cross-database duplicates (GB kept, GI removed) |
@@ -119,7 +126,7 @@ All written to `output/`:
 ### Verification
 
 ```bash
-python verify_results.py
+python verify_results.py --input-dir . --output-dir output
 ```
 
 Reads all intermediate and output files independently and reports:
@@ -130,8 +137,9 @@ Reads all intermediate and output files independently and reports:
 ## Adapting to a New Pathogen
 
 1. **Subtype parsing** — override `parse_subtype_genbank` in `harmonize_metadata.py` if the default patterns (`virus <subtype>` or `<subtype> virus`) don't match your organism names
-2. **Exclusion list** — add lab/institution/visit codes to `EXCLUDED_SHARED_TOKENS` in `config.py` as needed
-3. **Normalization maps** — extend `COUNTRY_NORMALIZATION` and `HOST_NORMALIZATION` for your data
+2. **Edge-case copy policy** — use `--remove-edge-copies` flag to decide whether edge-case pairs keep both copies (default) or only the GenBank copy
+3. **Exclusion list** — add lab/institution/visit codes to `EXCLUDED_SHARED_TOKENS` in `config.py` as needed
+4. **Normalization maps** — extend `COUNTRY_NORMALIZATION` and `HOST_NORMALIZATION` for your data
 
 ## Output Example
 

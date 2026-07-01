@@ -16,6 +16,7 @@ Outputs (per database):
   - removed_intra_*.csv    -- metadata of removed records
   - removed_intra_*.fasta  -- sequences of removed records
 """
+import argparse
 import csv
 from collections import defaultdict
 
@@ -367,6 +368,25 @@ def dedup_gisaid():
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Intra-database deduplication (Step 1).")
+    parser.add_argument("--genbank-meta", default=None, help="GenBank metadata CSV path")
+    parser.add_argument("--genbank-fasta", default=None, help="GenBank FASTA path")
+    parser.add_argument("--gisaid-meta", default=None, help="GISAID metadata Excel path")
+    parser.add_argument("--gisaid-fasta", default=None, help="GISAID FASTA path")
+    parser.add_argument("--output-dir", default=None, help="Output directory for deduped files")
+    args = parser.parse_args()
+
+    if args.genbank_meta is not None:
+        config.GENBANK_METADATA = args.genbank_meta
+    if args.genbank_fasta is not None:
+        config.GENBANK_FASTA = args.genbank_fasta
+    if args.gisaid_meta is not None:
+        config.GISAID_METADATA = args.gisaid_meta
+    if args.gisaid_fasta is not None:
+        config.GISAID_FASTA = args.gisaid_fasta
+    if args.output_dir is not None:
+        config.set_output_dir(args.output_dir)
+
     gb_deduped, gb_kept_accs, gb_removed = dedup_genbank()
     gi_deduped, gi_kept_accs, gi_removed = dedup_gisaid()
 

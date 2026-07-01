@@ -32,6 +32,7 @@ Outputs:
   cross_database_matches.csv  -- all confirmed match pairs
   edge_cases.csv             -- records needing manual review
 """
+import argparse
 import csv
 import re
 from collections import defaultdict
@@ -457,6 +458,19 @@ def match_cross_database():
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Cross-database matching (Step 2).")
+    parser.add_argument("--deduped-gb-meta", default=None, help="Deduped GenBank metadata CSV")
+    parser.add_argument("--deduped-gi-meta", default=None, help="Deduped GISAID metadata CSV")
+    parser.add_argument("--output-dir", default=None, help="Output directory for match files")
+    args = parser.parse_args()
+
+    if args.deduped_gb_meta is not None:
+        config.DEDUPED_GENBANK_METADATA = args.deduped_gb_meta
+    if args.deduped_gi_meta is not None:
+        config.DEDUPED_GISAID_METADATA = args.deduped_gi_meta
+    if args.output_dir is not None:
+        config.set_output_dir(args.output_dir)
+
     matches, edge_cases, considered_rejected, gb_only, gi_only = match_cross_database()
     gb_only_seq_hashes = {str(r.get("SeqHash", "")) for r in gb_only}
     gb_only_seq_hashes.discard("")
