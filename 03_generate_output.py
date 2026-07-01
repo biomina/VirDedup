@@ -8,6 +8,7 @@ Reads intermediate outputs from steps 1 and 2, then produces:
   - removed_sequences.csv          -- side-by-side removed + kept metadata
   - deduplication_report.txt       -- summary statistics
 """
+import argparse
 import csv
 import os
 from collections import defaultdict
@@ -126,7 +127,7 @@ def extract_metadata_row(row, source_db, prefix=""):
 #  Main assembly
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_output():
+def generate_output(remove_edge_copies=False):
     """Assemble final deduplicated output files."""
     print("=" * 60)
     print("FINAL OUTPUT GENERATION")
@@ -145,7 +146,7 @@ def generate_output():
     cross_matches = pd.read_csv(config.CROSS_MATCHES_CSV, low_memory=False)
     print(f"  Cross-database matches: {len(cross_matches):,}")
 
-    # Edge cases (loaded for reference, not included in dedup output)
+    # Edge cases (loaded for including in dedup output, keeping one copy per pair)
     edge_cases = pd.read_csv(config.EDGE_CASES_CSV, low_memory=False)
     print(f"  Edge cases (review):    {len(edge_cases):,}")
 
@@ -203,6 +204,34 @@ def generate_output():
         matched_gisaid_accessions.add(gi_acc)
         matched_genbank_accessions.add(gb_acc)
 
+    # Edge cases: optionally keep GenBank record, note GISAID accession (one copy per pair)
+    if remove_edge_copies:
+        for idx, edge_row in edge_cases.iterrows():
+            gb_acc = edge_row.get("GenBank_Accession", "")
+            gi_acc = edge_row.get("GISAID_Accession", "")
+            if not gb_acc or not gi_acc:
+                continue
+
+            gb_row = gb_by_acc.get(gb_acc)
+            if gb_row is None:
+                continue
+            gi_row = gi_by_acc.get(gi_acc)
+
+            rec = extract_metadata_row(gb_row, "GenBank", prefix="")
+            rec["GISAID_Accession"] = gi_acc
+            rec["Source"] = "GenBank"
+            rec["Integration_Status"] = "EDGE"
+            rec["Primary_Accession"] = gb_acc
+            if gi_row is not None and not rec.get("Lineage"):
+                rec["Lineage"] = _v(gi_row.get("GISAID_Lineage", "")) or _v(gi_row.get("Lineage", ""))
+            add_source_metadata(rec, gb_row, "GenBank")
+            add_source_metadata(rec, gi_row, "GISAID")
+            add_source_metadata(rec, edge_row, "Edge")
+            dedup_records.append(rec)
+
+            matched_gisaid_accessions.add(gi_acc)
+            matched_genbank_accessions.add(gb_acc)
+
     # GenBank-only records (not matched)
     for idx, row in gb_deduped.iterrows():
         acc = row.get("Accession", "")
@@ -251,7 +280,7 @@ def generate_output():
     # Determine which accessions to include in the FASTA
     fasta_entries = {}  # accession -> (header_line, sequence)
 
-    # Matched: use GenBank sequence
+    # Matched and edge: use GenBank sequence
     for gb_acc in matched_genbank_accessions:
         fasta_entries[gb_acc] = ("gb_match", None)  # placeholder
 
@@ -345,6 +374,21 @@ def generate_output():
         rec["Removal_Reason"] = "cross-database GISAID removed for GenBank match"
         removed_records.append(rec)
 
+    # 4d. Edge case removed records (GISAID side removed, GenBank kept)
+    if remove_edge_copies:
+        for idx, edge_row in edge_cases.iterrows():
+            gb_acc = edge_row.get("GenBank_Accession", "")
+            gi_acc = edge_row.get("GISAID_Accession", "")
+            gb_row = gb_by_acc.get(gb_acc)
+            gi_row = gi_by_acc.get(gi_acc)
+            if gb_row is None or gi_row is None:
+                continue
+            rec = {}
+            rec.update(extract_metadata_row(gi_row, "GISAID", prefix="Removed"))
+            rec.update(extract_metadata_row(gb_row, "GenBank", prefix="Kept"))
+            rec["Removal_Reason"] = "edge case GISAID removed for GenBank match"
+            removed_records.append(rec)
+
     if removed_records:
         removed_df = pd.DataFrame(removed_records)
         # Ensure all columns exist
@@ -377,12 +421,17 @@ def generate_output():
             acc = extract_gisaid_accession(record.id)
             removed_acc_to_source[acc] = ("GISAID", record.description, str(record.seq))
 
-    # Cross-database removed GISAID records
+    # Cross-database removed GISAID records (matches + edge cases)
     gi_removed_cross_accs = set()
     for idx, match_row in cross_matches.iterrows():
         gi_acc = match_row.get("GISAID_Accession", "")
         if gi_acc:
             gi_removed_cross_accs.add(gi_acc)
+    if remove_edge_copies:
+        for idx, edge_row in edge_cases.iterrows():
+            gi_acc = edge_row.get("GISAID_Accession", "")
+            if gi_acc:
+                gi_removed_cross_accs.add(gi_acc)
 
     if gi_removed_cross_accs:
         for record in SeqIO.parse(config.GISAID_FASTA, "fasta"):
@@ -533,4 +582,8 @@ def generate_output():
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    generate_output()
+    parser = argparse.ArgumentParser(description="Generate final deduplicated output files.")
+    parser.add_argument("--remove-edge-copies", action="store_true", default=False,
+                       help="Retain only the GenBank copy for edge-case pairs (remove GISAID side)")
+    args = parser.parse_args()
+    generate_output(remove_edge_copies=args.remove_edge_copies)
