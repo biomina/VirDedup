@@ -392,6 +392,21 @@ def match_cross_database():
         for gi_row in gi_by_hash[seq_hash]:
             gi_only_records.append(gi_row)
 
+    # Remove any edge case / considered-rejected record whose GenBank or
+    # GISAID accession already appears in a confirmed match pair.
+    matched_gb = {m["GenBank_Accession"] for m in matches}
+    matched_gi = {m["GISAID_Accession"] for m in matches}
+    edge_cases = [
+        e for e in edge_cases
+        if e["GenBank_Accession"] not in matched_gb
+        and e["GISAID_Accession"] not in matched_gi
+    ]
+    considered_rejected = [
+        c for c in considered_rejected
+        if c["GenBank_Accession"] not in matched_gb
+        and c["GISAID_Accession"] not in matched_gi
+    ]
+
     gb_only_seq_hashes = {str(r.get("SeqHash", "")) for r in gb_only_records}
     gb_only_seq_hashes.discard("")
     gi_only_seq_hashes = {str(r.get("SeqHash", "")) for r in gi_only_records}
