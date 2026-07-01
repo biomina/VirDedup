@@ -1,4 +1,4 @@
-# Dedup — Cross-Database Sequence Deduplication Pipeline
+# VirDedup — Cross-Database Sequence Deduplication Pipeline
 
 A deterministic, rule-based pipeline that identifies and removes duplicate viral sequences within and between GenBank and GISAID. Uses exact SHA256 hash matching combined with metadata comparison rules.
 
