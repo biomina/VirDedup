@@ -97,12 +97,14 @@ def main():
     run_step("Step 3: Final output generation", cmd3)
 
     # ── Verification ──────────────────────────────────────────────────────
-    run_step(
-        "Verification: Checking results",
-        [python, os.path.join(script_dir, "verify_results.py"),
-         "--input-dir", input_dir,
-         "--output-dir", output_dir],
-    )
+    verify_cmd = [
+        python, os.path.join(script_dir, "verify_results.py"),
+        "--input-dir", input_dir,
+        "--output-dir", output_dir,
+    ]
+    if args.remove_edge_copies:
+        verify_cmd.append("--remove-edge-copies")
+    run_step("Verification: Checking results", verify_cmd)
 
     print(f"\n{'=' * 60}")
     print("  PIPELINE COMPLETE")

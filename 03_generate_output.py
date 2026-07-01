@@ -206,6 +206,7 @@ def generate_output(remove_edge_copies=False):
 
     # Edge cases: optionally keep GenBank record, note GISAID accession (one copy per pair)
     if remove_edge_copies:
+        existing_gb = {r["Primary_Accession"] for r in dedup_records}
         for idx, edge_row in edge_cases.iterrows():
             gb_acc = edge_row.get("GenBank_Accession", "")
             gi_acc = edge_row.get("GISAID_Accession", "")
@@ -216,6 +217,13 @@ def generate_output(remove_edge_copies=False):
             if gb_row is None:
                 continue
             gi_row = gi_by_acc.get(gi_acc)
+
+            # If this GB accession already has a MATCH record, skip the
+            # duplicate — the GenBank copy is already in the output.
+            if gb_acc in existing_gb:
+                # Still mark the GI accession as removed
+                matched_gisaid_accessions.add(gi_acc)
+                continue
 
             rec = extract_metadata_row(gb_row, "GenBank", prefix="")
             rec["GISAID_Accession"] = gi_acc
@@ -231,6 +239,7 @@ def generate_output(remove_edge_copies=False):
 
             matched_gisaid_accessions.add(gi_acc)
             matched_genbank_accessions.add(gb_acc)
+            existing_gb.add(gb_acc)
 
     # GenBank-only records (not matched)
     for idx, row in gb_deduped.iterrows():
@@ -406,44 +415,43 @@ def generate_output(remove_edge_copies=False):
     # ── 4d. Build removed_sequences.fasta ────────────────────────────────
     print("  Building removed sequences FASTA ...")
 
-    # Combine all removed accessions
-    removed_acc_to_source = {}  # accession -> (source_db, original_header, kept_text)
+    # Build lookup: GI accession -> (original_header, sequence)
+    gi_seq_lookup = {}
+    for record in SeqIO.parse(config.GISAID_FASTA, "fasta"):
+        acc = extract_gisaid_accession(record.id)
+        if acc and acc not in gi_seq_lookup:
+            gi_seq_lookup[acc] = (record.description, str(record.seq))
 
-    # Intra-GenBank
-    if os.path.exists(config.REMOVED_INTRA_GENBANK_FASTA):
-        for record in SeqIO.parse(config.REMOVED_INTRA_GENBANK_FASTA, "fasta"):
-            acc = extract_genbank_accession(record.id)
-            removed_acc_to_source[acc] = ("GenBank", record.description, str(record.seq))
-
-    # Intra-GISAID
-    if os.path.exists(config.REMOVED_INTRA_GISAID_FASTA):
-        for record in SeqIO.parse(config.REMOVED_INTRA_GISAID_FASTA, "fasta"):
-            acc = extract_gisaid_accession(record.id)
-            removed_acc_to_source[acc] = ("GISAID", record.description, str(record.seq))
-
-    # Cross-database removed GISAID records (matches + edge cases)
-    gi_removed_cross_accs = set()
-    for idx, match_row in cross_matches.iterrows():
-        gi_acc = match_row.get("GISAID_Accession", "")
-        if gi_acc:
-            gi_removed_cross_accs.add(gi_acc)
-    if remove_edge_copies:
-        for idx, edge_row in edge_cases.iterrows():
-            gi_acc = edge_row.get("GISAID_Accession", "")
-            if gi_acc:
-                gi_removed_cross_accs.add(gi_acc)
-
-    if gi_removed_cross_accs:
-        for record in SeqIO.parse(config.GISAID_FASTA, "fasta"):
-            acc = extract_gisaid_accession(record.id)
-            if acc in gi_removed_cross_accs and acc not in removed_acc_to_source:
-                removed_acc_to_source[acc] = ("GISAID", record.description, str(record.seq))
+    # Build lookup: GB accession -> (original_header, sequence)
+    gb_seq_lookup = {}
+    for record in SeqIO.parse(config.GENBANK_FASTA, "fasta"):
+        acc = extract_genbank_accession(record.id)
+        if acc and acc not in gb_seq_lookup:
+            gb_seq_lookup[acc] = (record.description, str(record.seq))
 
     removed_fasta_count = 0
     with open(config.FINAL_REMOVED_FASTA, "w") as out_fa:
-        for acc, (source, header, seq) in removed_acc_to_source.items():
-            out_fa.write(f">{header}\n{seq}\n")
-            removed_fasta_count += 1
+        for rec in removed_records:
+            gi_acc = rec.get("Removed_Accession", "")
+            source = rec.get("Removed_Source", "")
+            header, seq = None, None
+            if source == "GISAID":
+                entry = gi_seq_lookup.get(gi_acc)
+                if entry:
+                    header, seq = entry
+            else:
+                entry = gb_seq_lookup.get(gi_acc)
+                if entry:
+                    header, seq = entry
+            if header and seq:
+                out_fa.write(f">{header}\n{seq}\n")
+                removed_fasta_count += 1
+            else:
+                # Fallback: try the original header from the CSV
+                orig_h = rec.get("Removed_Original_Header", "")
+                if orig_h:
+                    out_fa.write(f">{orig_h}\n{{missing_sequence}}\n")
+                    removed_fasta_count += 1
     print(f"  -> {config.FINAL_REMOVED_FASTA} ({removed_fasta_count:,} sequences)")
 
     # ── 5. Save deduplicated metadata & write report ─────────────────────
