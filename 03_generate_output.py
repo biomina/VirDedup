@@ -504,14 +504,22 @@ def generate_output(remove_edge_copies=False):
     for _, r in edge_cases.iterrows():
         edge_group_counts[categorize_edge_case(r)] += 1
 
+    gb_input_count = 0
+    gb_len_filtered = 0
+    gi_input_count = 0
+    gi_len_filtered = 0
     try:
-        gb_input_count = len(pd.read_csv(config.GENBANK_METADATA))
+        gb_input = pd.read_csv(config.GENBANK_METADATA)
+        gb_input_count = len(gb_input)
+        gb_len_filtered = int((gb_input["Length"] < config.MIN_SEQUENCE_LENGTH).sum())
     except Exception:
-        gb_input_count = 0
+        pass
     try:
-        gi_input_count = len(pd.read_excel(config.GISAID_METADATA))
+        gi_input = pd.read_excel(config.GISAID_METADATA)
+        gi_input_count = len(gi_input)
+        gi_len_filtered = int((gi_input["Sequence Length"] < config.MIN_SEQUENCE_LENGTH).sum())
     except Exception:
-        gi_input_count = 0
+        pass
 
     gb_removed_count = 0
     if os.path.exists(config.REMOVED_INTRA_GENBANK_CSV):
@@ -521,6 +529,8 @@ def generate_output(remove_edge_copies=False):
     if os.path.exists(config.REMOVED_INTRA_GISAID_CSV):
         with open(config.REMOVED_INTRA_GISAID_CSV, encoding="utf-8") as f:
             gi_removed_count = sum(1 for _ in f) - 1
+
+    gi_no_fasta = gi_input_count - len(gi_deduped) - gi_removed_count - gi_len_filtered
 
     report_lines = [
         "=" * 60,
@@ -536,8 +546,11 @@ def generate_output(remove_edge_copies=False):
         "--- Intra-database dedup --------------------------------------------",
         f"  GenBank kept:             {len(gb_deduped):,}",
         f"  GenBank removed:          {gb_removed_count:,}",
+        f"  GenBank length-filtered:  {gb_len_filtered:,}",
         f"  GISAID kept:              {len(gi_deduped):,}",
         f"  GISAID removed:           {gi_removed_count:,}",
+        f"  GISAID length-filtered:   {gi_len_filtered:,}",
+        f"  GISAID no FASTA entry:    {gi_no_fasta:,}",
         "",
         "--- Cross-database matching -----------------------------------------",
         f"  Confirmed duplicates:     {len(cross_matches):,}",

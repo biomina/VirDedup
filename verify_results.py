@@ -32,14 +32,22 @@ def main(remove_edge_copies=False):
 
     # ── 2. Intra-database dedup ─────────────────────────────────────────────
     print("\n--- INTRA-DATABASE DEDUP ---")
+    gb_raw = pd.read_csv(config.GENBANK_METADATA, low_memory=False)
+    gb_len_filter = int((gb_raw["Length"] < config.MIN_SEQUENCE_LENGTH).sum())
     gb_deduped = len(pd.read_csv(config.DEDUPED_GENBANK_METADATA, low_memory=False))
-    gi_deduped = len(pd.read_csv(config.DEDUPED_GISAID_METADATA, low_memory=False))
     gb_removed = len(pd.read_csv(config.REMOVED_INTRA_GENBANK_CSV, low_memory=False))
+    gi_raw = pd.read_excel(config.GISAID_METADATA)
+    gi_len_filter = int((gi_raw["Sequence Length"] < config.MIN_SEQUENCE_LENGTH).sum())
+    gi_deduped = len(pd.read_csv(config.DEDUPED_GISAID_METADATA, low_memory=False))
     gi_removed = len(pd.read_csv(config.REMOVED_INTRA_GISAID_CSV, low_memory=False))
+    gi_no_fasta = len(gi_raw) - gi_deduped - gi_removed - gi_len_filter
     print(f"  GenBank kept:              {gb_deduped:>8,}")
     print(f"  GenBank removed:           {gb_removed:>8,}")
+    print(f"  GenBank length-filtered:   {gb_len_filter:>8,}")
     print(f"  GISAID kept:               {gi_deduped:>8,}")
     print(f"  GISAID removed:            {gi_removed:>8,}")
+    print(f"  GISAID length-filtered:    {gi_len_filter:>8,}")
+    print(f"  GISAID no FASTA entry:     {gi_no_fasta:>8,}")
     print(f"  Total retained (intra):    {gb_deduped + gi_deduped:>8,}")
     print(f"  Total removed (intra):     {gb_removed + gi_removed:>8,}")
 
