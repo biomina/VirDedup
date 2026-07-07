@@ -187,6 +187,7 @@ if __name__ == "__main__":
         remove_categories.add("Country: mismatch")
     if args.remove_edge_copies or args.remove_edge_other:
         remove_categories.add("Other")
+        remove_categories.add("Subtype: missing")
 
     if args.input_dir is not None:
         config.set_input_dir(args.input_dir)

@@ -154,11 +154,17 @@ def check_match(gb_row, gi_row):
     reasons.append("seq_hash_match")
 
     # [2] Subtype match
-    gb_subtype = str(gb_row.get("Subtype", "")).strip().upper()
-    gi_subtype = str(gi_row.get("Subtype", "")).strip().upper()
-    subtype_match = bool(gb_subtype) and (gb_subtype == gi_subtype)
+    _EMPTY = frozenset(("", "nan", "na", "n/a", "none"))
+    gb_subtype_raw = str(gb_row.get("Subtype", "")).strip().upper()
+    gi_subtype_raw = str(gi_row.get("Subtype", "")).strip().upper()
+    gb_subtype = "" if gb_subtype_raw.lower() in _EMPTY else gb_subtype_raw
+    gi_subtype = "" if gi_subtype_raw.lower() in _EMPTY else gi_subtype_raw
+    both_present = bool(gb_subtype) and bool(gi_subtype)
+    subtype_match = both_present and (gb_subtype == gi_subtype)
     if subtype_match:
         reasons.append(f"subtype_match:{gb_subtype}")
+    elif not both_present:
+        reasons.append("subtype_skipped_missing")
     else:
         reasons.append(f"subtype_mismatch:{gb_subtype}vs{gi_subtype}")
         return False, False, reasons
@@ -333,15 +339,17 @@ def match_cross_database():
                     best_match_tuple = gi_acc
                     break  # take first match
 
-                # Track all pairs with same sequence + same subtype that
-                # were NOT confirmed as duplicates (edge cases + clean rejections)
+                # Track all non-match pairs (edge cases + clean rejections)
                 reasons_str = " ".join(r for r in reasons if isinstance(r, str))
-                if "subtype_match" in reasons_str:
+                if "subtype_match" in reasons_str or "subtype_skipped_missing" in reasons_str:
                     gb_iso = str(gb_row.get("Isolate", "")).strip().lower()
+                    has_subtype_skip = any("subtype_skipped_missing" in r for r in reasons if isinstance(r, str))
                     has_iso_issue = any("isolate_mismatch" in r for r in reasons if isinstance(r, str))
                     has_date_issue = any("date_mismatch" in r for r in reasons if isinstance(r, str))
                     has_country_issue = any("country_mismatch" in r for r in reasons if isinstance(r, str))
-                    if has_iso_issue and re.match(r'^\d{7,}$', gb_iso):
+                    if has_subtype_skip:
+                        cat = "Subtype: missing"
+                    elif has_iso_issue and re.match(r'^\d{7,}$', gb_iso):
                         cat = "Isolate: numeric code"
                     elif has_iso_issue:
                         cat = "Isolate: structured name"

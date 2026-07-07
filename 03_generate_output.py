@@ -196,6 +196,9 @@ def generate_output(remove_categories=frozenset()):
         rec["Primary_Accession"] = gb_acc
         if gi_row is not None and not rec.get("Lineage"):
             rec["Lineage"] = _v(gi_row.get("GISAID_Lineage", "")) or _v(gi_row.get("Lineage", ""))
+        # If GB subtype is missing, inherit from matched GI record
+        if gi_row is not None and not rec.get("Subtype"):
+            rec["Subtype"] = _v(gi_row.get("Subtype", ""))
         add_source_metadata(rec, gb_row, "GenBank")
         add_source_metadata(rec, gi_row, "GISAID")
         add_source_metadata(rec, match_row, "Match")
@@ -236,6 +239,8 @@ def generate_output(remove_categories=frozenset()):
             rec["Primary_Accession"] = gb_acc
             if gi_row is not None and not rec.get("Lineage"):
                 rec["Lineage"] = _v(gi_row.get("GISAID_Lineage", "")) or _v(gi_row.get("Lineage", ""))
+            if gi_row is not None and not rec.get("Subtype"):
+                rec["Subtype"] = _v(gi_row.get("Subtype", ""))
             add_source_metadata(rec, gb_row, "GenBank")
             add_source_metadata(rec, gi_row, "GISAID")
             add_source_metadata(rec, edge_row, "Edge")
@@ -625,6 +630,7 @@ if __name__ == "__main__":
         remove_categories.add("Country: mismatch")
     if args.remove_edge_copies or args.remove_edge_other:
         remove_categories.add("Other")
+        remove_categories.add("Subtype: missing")
 
     if args.deduped_gb_meta is not None:
         config.DEDUPED_GENBANK_METADATA = args.deduped_gb_meta
