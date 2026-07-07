@@ -17,7 +17,7 @@ def count_fasta_records(path):
         return sum(1 for line in f if line.startswith(">"))
 
 
-def main(remove_edge_copies=False):
+def main(remove_categories=frozenset()):
     print("=" * 60)
     print("DEDUPLICATION RESULT VERIFICATION")
     print("=" * 60)
@@ -40,10 +40,12 @@ def main(remove_edge_copies=False):
     gi_len_filter = int((gi_raw["Sequence Length"] < config.MIN_SEQUENCE_LENGTH).sum())
     gi_deduped = len(pd.read_csv(config.DEDUPED_GISAID_METADATA, low_memory=False))
     gi_removed = len(pd.read_csv(config.REMOVED_INTRA_GISAID_CSV, low_memory=False))
+    gb_no_fasta = len(gb_raw) - gb_deduped - gb_removed - gb_len_filter
     gi_no_fasta = len(gi_raw) - gi_deduped - gi_removed - gi_len_filter
     print(f"  GenBank kept:              {gb_deduped:>8,}")
     print(f"  GenBank removed:           {gb_removed:>8,}")
     print(f"  GenBank length-filtered:   {gb_len_filter:>8,}")
+    print(f"  GenBank no FASTA entry:    {gb_no_fasta:>8,}")
     print(f"  GISAID kept:               {gi_deduped:>8,}")
     print(f"  GISAID removed:            {gi_removed:>8,}")
     print(f"  GISAID length-filtered:    {gi_len_filter:>8,}")
@@ -128,13 +130,15 @@ def main(remove_edge_copies=False):
     print(f"  FASTA == metadata:         {'OK' if final_fasta == final_meta else 'MISMATCH!'}")
     print(f"  Removed FASTA == removed:  {'OK' if removed_fasta == removed_meta else 'MISMATCH!'}")
 
-    if remove_edge_copies:
-        # Use unique GI accessions (an edge GI may appear in multiple rows)
-        edge_gi_unique = edge_cases["GISAID_Accession"].nunique() if not edge_cases.empty else 0
-        expected_removed = gb_removed + gi_removed + len(matches) + len(edge_cases)
+    if remove_categories:
+        edges_to_remove = edge_cases[edge_cases["Category"].isin(remove_categories)].copy()
+        edge_removed_count = len(edges_to_remove)
+        edge_gi_unique = edges_to_remove["GISAID_Accession"].nunique() if not edges_to_remove.empty else 0
+        expected_removed = gb_removed + gi_removed + len(matches) + edge_removed_count
         expected_kept = gb_deduped + gi_deduped - len(matches) - edge_gi_unique
-        print(f"  Expected removed (intra + cross-db matches + edge GI): {expected_removed:>8,}")
-        print(f"  Actual removed in CSV:                                {removed_meta:>8,}")
+        print(f"  Edges removed ({', '.join(sorted(remove_categories))}):         {edge_removed_count:>8,}")
+        print(f"  Expected removed (intra + cross-db + edge GI): {expected_removed:>8,}")
+        print(f"  Actual removed in CSV:                         {removed_meta:>8,}")
         print(f"  Removal count check:  {'OK' if expected_removed == removed_meta else 'MISMATCH!'}")
         print(f"  Expected kept (deduped GB+GI minus matches minus unique edge GI): {expected_kept:>8,}")
         print(f"  Actual deduplicated:                                             {final_fasta:>8,}")
@@ -158,12 +162,35 @@ if __name__ == "__main__":
     parser.add_argument("--input-dir", default=None, help="Input directory (original files)")
     parser.add_argument("--output-dir", default=None, help="Output directory (all intermediate + final files)")
     parser.add_argument("--remove-edge-copies", action="store_true", default=False,
-                       help="Adjust expectations for edge-case copy removal")
+                       help="Shorthand for all --remove-edge-* flags")
+    parser.add_argument("--remove-edge-isolate", action="store_true", default=False,
+                       help="Remove GISAID copy for isolate-mismatch edge cases")
+    parser.add_argument("--remove-edge-date", action="store_true", default=False,
+                       help="Remove GISAID copy for date-mismatch edge cases")
+    parser.add_argument("--remove-edge-country", action="store_true", default=False,
+                       help="Remove GISAID copy for country-mismatch edge cases")
+    parser.add_argument("--remove-edge-other", action="store_true", default=False,
+                       help="Remove GISAID copy for other edge cases")
+    parser.add_argument("--min-seq-length", type=int, default=7000,
+                        help="Minimum sequence length used for filtering (default: 7000; 0 = no filter)")
     args = parser.parse_args()
+
+    config.MIN_SEQUENCE_LENGTH = args.min_seq_length
+
+    remove_categories = set()
+    if args.remove_edge_copies or args.remove_edge_isolate:
+        remove_categories.add("Isolate: numeric code")
+        remove_categories.add("Isolate: structured name")
+    if args.remove_edge_copies or args.remove_edge_date:
+        remove_categories.add("Date: mismatch")
+    if args.remove_edge_copies or args.remove_edge_country:
+        remove_categories.add("Country: mismatch")
+    if args.remove_edge_copies or args.remove_edge_other:
+        remove_categories.add("Other")
 
     if args.input_dir is not None:
         config.set_input_dir(args.input_dir)
     if args.output_dir is not None:
         config.set_output_dir(args.output_dir)
 
-    main(remove_edge_copies=args.remove_edge_copies)
+    main(remove_categories=frozenset(remove_categories))

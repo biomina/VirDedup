@@ -27,6 +27,9 @@ def parse_subtype_genbank(organism_name) -> str:
     """
     if not isinstance(organism_name, str):
         return ""
+    m = re.search(r"virus\s+(?:type|subtype)\s+([A-Za-z0-9]{1,4})\s*$", organism_name, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
     m = re.search(r"virus\s+([A-Za-z0-9]{1,4})\s*$", organism_name, re.IGNORECASE)
     if m:
         return m.group(1).upper()

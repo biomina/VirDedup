@@ -19,16 +19,22 @@ run_pipeline.py  (orchestrator — runs steps 1–3 + verification)
 pip install pandas numpy biopython rapidfuzz tqdm openpyxl
 
 # Full pipeline via orchestrator (recommended)
-python run_pipeline.py --input-dir . --output-dir output
+python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000
 
-# With edge-case copy deduplication
-python run_pipeline.py --input-dir . --output-dir output --remove-edge-copies
+# Remove edge-case GISAID copies (all categories)
+python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000 --remove-edge-copies
+
+# Remove only isolate-mismatch and country-mismatch edge copies (keep date)
+python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000 --remove-edge-isolate --remove-edge-country
+
+# No length filtering, remove all edge copies
+python run_pipeline.py --input-dir . --output-dir output --min-seq-length 0 --remove-edge-copies
 
 # Individual steps (each accepts overridable CLI paths)
-python 01_intra_database_dedup.py --genbank-meta genbank_meta.csv --genbank-fasta genbank_sequences.fasta --gisaid-meta gisaid_metadata.xlsx --gisaid-fasta gisaid_sequences.fasta --output-dir output
+python 01_intra_database_dedup.py --genbank-meta genbank_meta.csv --genbank-fasta genbank_sequences.fasta --gisaid-meta gisaid_metadata.xlsx --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000
 python 02_cross_database_match.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --output-dir output
-python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output [--remove-edge-copies]
-python verify_results.py --input-dir . --output-dir output
+python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000 [--remove-edge-isolate] [--remove-edge-date] [--remove-edge-country] [--remove-edge-other]
+python verify_results.py --input-dir . --output-dir output --min-seq-length 7000
 ```
 
 ## Setup
@@ -54,7 +60,7 @@ Place these in the pipeline root directory:
 All settings are in `config.py`:
 
 - **Paths** — input and output file locations (overridable via CLI per script, or via `config.set_input_dir()` / `config.set_output_dir()`)
-- **`MIN_SEQUENCE_LENGTH`** — minimum sequence length (default: 7000 bp)
+- **`MIN_SEQUENCE_LENGTH`** — minimum sequence length (default: 7000 bp; overridable via `--min-seq-length` CLI arg; use `0` for no filtering)
 - **`COUNTRY_NORMALIZATION`** — maps raw country names to standard forms
 - **`HOST_NORMALIZATION`** — maps raw host names (e.g. `Homo sapiens` -> `Human`)
 - **`CORE_METADATA_FIELDS`** — fields used for intra-database dedup comparison
@@ -104,7 +110,12 @@ Assembles the final deduplicated datasets:
 - GenBank-only records -> kept as-is
 - GISAID-only records -> kept as-is
 - Intra-database duplicates -> removed (tracked with kept counterpart)
-- Edge cases -> kept as-is by default. Pass `--remove-edge-copies` to `03_generate_output.py` (or the orchestrator) to retain only the GenBank copy per edge-case pair, flagging it with `Integration_Status = EDGE`
+- Edge cases -> kept as-is by default (both copies). Pass per-category flags to selectively remove GISAID copies:
+  - `--remove-edge-isolate` — remove for isolate-mismatch edge cases
+  - `--remove-edge-date` — remove for date-mismatch edge cases
+  - `--remove-edge-country` — remove for country-mismatch edge cases
+  - `--remove-edge-other` — remove for other edge cases
+  - `--remove-edge-copies` — shorthand for all four flags above
 
 ## Output Files
 
@@ -126,7 +137,7 @@ All written to `output/`:
 ### Verification
 
 ```bash
-python verify_results.py --input-dir . --output-dir output
+python verify_results.py --input-dir . --output-dir output --min-seq-length 7000
 ```
 
 Reads all intermediate and output files independently and reports:
@@ -137,7 +148,7 @@ Reads all intermediate and output files independently and reports:
 ## Adapting to a New Pathogen
 
 1. **Subtype parsing** — override `parse_subtype_genbank` in `harmonize_metadata.py` if the default patterns (`virus <subtype>` or `<subtype> virus`) don't match your organism names
-2. **Edge-case copy policy** — use `--remove-edge-copies` flag to decide whether edge-case pairs keep both copies (default) or only the GenBank copy
+2. **Edge-case copy policy** — use per-category flags (`--remove-edge-isolate`, `--remove-edge-date`, `--remove-edge-country`) to selectively remove GISAID copies per edge case reason, or `--remove-edge-copies` for all
 3. **Exclusion list** — add lab/institution/visit codes to `EXCLUDED_SHARED_TOKENS` in `config.py` as needed
 4. **Normalization maps** — extend `COUNTRY_NORMALIZATION` and `HOST_NORMALIZATION` for your data
 

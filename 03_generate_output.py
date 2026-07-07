@@ -127,7 +127,7 @@ def extract_metadata_row(row, source_db, prefix=""):
 #  Main assembly
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_output(remove_edge_copies=False):
+def generate_output(remove_categories=frozenset()):
     """Assemble final deduplicated output files."""
     print("=" * 60)
     print("FINAL OUTPUT GENERATION")
@@ -204,10 +204,17 @@ def generate_output(remove_edge_copies=False):
         matched_gisaid_accessions.add(gi_acc)
         matched_genbank_accessions.add(gb_acc)
 
-    # Edge cases: optionally keep GenBank record, note GISAID accession (one copy per pair)
-    if remove_edge_copies:
+    # Edge cases: optionally remove GI copies per category
+    if remove_categories:
+        edges_to_remove = edge_cases[edge_cases["Category"].isin(remove_categories)].copy()
+        edges_to_keep   = edge_cases[~edge_cases["Category"].isin(remove_categories)].copy()
+    else:
+        edges_to_remove = pd.DataFrame()
+        edges_to_keep   = edge_cases
+
+    if not edges_to_remove.empty:
         existing_gb = {r["Primary_Accession"] for r in dedup_records}
-        for idx, edge_row in edge_cases.iterrows():
+        for idx, edge_row in edges_to_remove.iterrows():
             gb_acc = edge_row.get("GenBank_Accession", "")
             gi_acc = edge_row.get("GISAID_Accession", "")
             if not gb_acc or not gi_acc:
@@ -218,10 +225,7 @@ def generate_output(remove_edge_copies=False):
                 continue
             gi_row = gi_by_acc.get(gi_acc)
 
-            # If this GB accession already has a MATCH record, skip the
-            # duplicate — the GenBank copy is already in the output.
             if gb_acc in existing_gb:
-                # Still mark the GI accession as removed
                 matched_gisaid_accessions.add(gi_acc)
                 continue
 
@@ -384,8 +388,8 @@ def generate_output(remove_edge_copies=False):
         removed_records.append(rec)
 
     # 4d. Edge case removed records (GISAID side removed, GenBank kept)
-    if remove_edge_copies:
-        for idx, edge_row in edge_cases.iterrows():
+    if remove_categories and not edges_to_remove.empty:
+        for idx, edge_row in edges_to_remove.iterrows():
             gb_acc = edge_row.get("GenBank_Accession", "")
             gi_acc = edge_row.get("GISAID_Accession", "")
             gb_row = gb_by_acc.get(gb_acc)
@@ -470,39 +474,17 @@ def generate_output(remove_edge_copies=False):
         reason_counts[r.get("Removal_Reason", "unknown")] += 1
 
     # ── Edge case grouping for report ────────────────────────────────────
-    def categorize_edge_case(row):
-        reason = str(row.get("Reason", ""))
-        cat = []
-        if "isolate_mismatch" in reason:
-            gb_iso = str(row.get("GB_Isolate", "")).strip().lower()
-            if gb_iso in ("nan", "na", "n/a", "none", ""):
-                cat.append("GB isolate missing")
-            elif re.match(r'^\d{7,}$', gb_iso):
-                cat.append("GB isolate is numeric code (7+ digits)")
-            else:
-                cat.append("GB isolate is structured name")
-        if "date_mismatch" in reason:
-            try:
-                gd = datetime.strptime(str(row.get("GB_Date", "")).strip(), "%Y-%m-%d")
-                gid = datetime.strptime(str(row.get("GI_Date", "")).strip(), "%Y-%m-%d")
-                d = abs((gd - gid).days)
-                if d <= 7:
-                    cat.append("date differs by 1-7 days")
-                elif d <= 30:
-                    cat.append("date differs by 8-30 days")
-                elif d <= 365:
-                    cat.append("date differs by 31-365 days")
-                else:
-                    cat.append("date differs by >365 days")
-            except:
-                cat.append("date parse error")
-        if "country_mismatch" in reason:
-            cat.append("country mismatch")
-        return "; ".join(cat) if cat else "other"
-
     edge_group_counts = defaultdict(int)
     for _, r in edge_cases.iterrows():
-        edge_group_counts[categorize_edge_case(r)] += 1
+        cat = str(r.get("Category", ""))
+        edge_group_counts[cat] += 1
+
+    edge_removed_counts = defaultdict(int)
+    if remove_categories:
+        for _, r in edges_to_remove.iterrows():
+            cat = str(r.get("Category", ""))
+            if cat:
+                edge_removed_counts[cat] += 1
 
     gb_input_count = 0
     gb_len_filtered = 0
@@ -530,6 +512,7 @@ def generate_output(remove_edge_copies=False):
         with open(config.REMOVED_INTRA_GISAID_CSV, encoding="utf-8") as f:
             gi_removed_count = sum(1 for _ in f) - 1
 
+    gb_no_fasta = gb_input_count - len(gb_deduped) - gb_removed_count - gb_len_filtered
     gi_no_fasta = gi_input_count - len(gi_deduped) - gi_removed_count - gi_len_filtered
 
     report_lines = [
@@ -547,6 +530,7 @@ def generate_output(remove_edge_copies=False):
         f"  GenBank kept:             {len(gb_deduped):,}",
         f"  GenBank removed:          {gb_removed_count:,}",
         f"  GenBank length-filtered:  {gb_len_filtered:,}",
+        f"  GenBank no FASTA entry:   {gb_no_fasta:,}",
         f"  GISAID kept:              {len(gi_deduped):,}",
         f"  GISAID removed:           {gi_removed_count:,}",
         f"  GISAID length-filtered:   {gi_len_filtered:,}",
@@ -560,6 +544,10 @@ def generate_output(remove_edge_copies=False):
     ]
     for group_label, count in sorted(edge_group_counts.items(), key=lambda x: -x[1]):
         report_lines.append(f"  {count:>5,}  {group_label}")
+    if edge_removed_counts:
+        report_lines.append("")
+        for group_label, count in sorted(edge_removed_counts.items(), key=lambda x: -x[1]):
+            report_lines.append(f"        ({count:,} removed)")
     report_lines.extend([
         "",
         "--- Final deduplicated ----------------------------------------------",
@@ -612,8 +600,31 @@ if __name__ == "__main__":
     parser.add_argument("--gisaid-fasta", default=None, help="Original GISAID FASTA")
     parser.add_argument("--output-dir", default=None, help="Output directory for final files")
     parser.add_argument("--remove-edge-copies", action="store_true", default=False,
-                       help="Retain only the GenBank copy for edge-case pairs (remove GISAID side)")
+                       help="Shorthand for all --remove-edge-* flags (retain only GenBank copy for all edge cases)")
+    parser.add_argument("--remove-edge-isolate", action="store_true", default=False,
+                       help="Remove GISAID copy for isolate-mismatch edge cases")
+    parser.add_argument("--remove-edge-date", action="store_true", default=False,
+                       help="Remove GISAID copy for date-mismatch edge cases")
+    parser.add_argument("--remove-edge-country", action="store_true", default=False,
+                       help="Remove GISAID copy for country-mismatch edge cases")
+    parser.add_argument("--remove-edge-other", action="store_true", default=False,
+                       help="Remove GISAID copy for other edge cases")
+    parser.add_argument("--min-seq-length", type=int, default=7000,
+                        help="Minimum sequence length used for filtering (default: 7000; 0 = no filter)")
     args = parser.parse_args()
+
+    config.MIN_SEQUENCE_LENGTH = args.min_seq_length
+
+    remove_categories = set()
+    if args.remove_edge_copies or args.remove_edge_isolate:
+        remove_categories.add("Isolate: numeric code")
+        remove_categories.add("Isolate: structured name")
+    if args.remove_edge_copies or args.remove_edge_date:
+        remove_categories.add("Date: mismatch")
+    if args.remove_edge_copies or args.remove_edge_country:
+        remove_categories.add("Country: mismatch")
+    if args.remove_edge_copies or args.remove_edge_other:
+        remove_categories.add("Other")
 
     if args.deduped_gb_meta is not None:
         config.DEDUPED_GENBANK_METADATA = args.deduped_gb_meta
@@ -630,4 +641,4 @@ if __name__ == "__main__":
     if args.output_dir is not None:
         config.set_output_dir(args.output_dir)
 
-    generate_output(remove_edge_copies=args.remove_edge_copies)
+    generate_output(remove_categories=frozenset(remove_categories))

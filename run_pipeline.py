@@ -40,7 +40,17 @@ def main():
     parser.add_argument("--output-dir", required=True,
                         help="Directory for all intermediate and final output files")
     parser.add_argument("--remove-edge-copies", action="store_true", default=False,
-                        help="Retain only the GenBank copy for edge-case pairs")
+                        help="Shorthand for all --remove-edge-* flags")
+    parser.add_argument("--remove-edge-isolate", action="store_true", default=False,
+                        help="Remove GISAID copy for isolate-mismatch edge cases")
+    parser.add_argument("--remove-edge-date", action="store_true", default=False,
+                        help="Remove GISAID copy for date-mismatch edge cases")
+    parser.add_argument("--remove-edge-country", action="store_true", default=False,
+                        help="Remove GISAID copy for country-mismatch edge cases")
+    parser.add_argument("--remove-edge-other", action="store_true", default=False,
+                        help="Remove GISAID copy for other edge cases")
+    parser.add_argument("--min-seq-length", type=int, default=7000,
+                        help="Minimum sequence length to process (default: 7000; 0 = no filter)")
     args = parser.parse_args()
 
     input_dir = os.path.abspath(args.input_dir)
@@ -69,7 +79,8 @@ def main():
          "--genbank-fasta", gb_fasta,
          "--gisaid-meta", gi_meta,
          "--gisaid-fasta", gi_fasta,
-         "--output-dir", output_dir],
+         "--output-dir", output_dir,
+         "--min-seq-length", str(args.min_seq_length)],
     )
 
     # ── Step 2: Cross-database matching ───────────────────────────────────
@@ -92,8 +103,12 @@ def main():
         "--gisaid-fasta", gi_fasta,
         "--output-dir", output_dir,
     ]
-    if args.remove_edge_copies:
-        cmd3.append("--remove-edge-copies")
+    cmd3.append("--min-seq-length")
+    cmd3.append(str(args.min_seq_length))
+    for flag in ("--remove-edge-copies", "--remove-edge-isolate", "--remove-edge-date",
+                  "--remove-edge-country", "--remove-edge-other"):
+        if getattr(args, flag.lstrip("-").replace("-", "_"), False):
+            cmd3.append(flag)
     run_step("Step 3: Final output generation", cmd3)
 
     # ── Verification ──────────────────────────────────────────────────────
@@ -102,8 +117,12 @@ def main():
         "--input-dir", input_dir,
         "--output-dir", output_dir,
     ]
-    if args.remove_edge_copies:
-        verify_cmd.append("--remove-edge-copies")
+    verify_cmd.append("--min-seq-length")
+    verify_cmd.append(str(args.min_seq_length))
+    for flag in ("--remove-edge-copies", "--remove-edge-isolate", "--remove-edge-date",
+                  "--remove-edge-country", "--remove-edge-other"):
+        if getattr(args, flag.lstrip("-").replace("-", "_"), False):
+            verify_cmd.append(flag)
     run_step("Verification: Checking results", verify_cmd)
 
     print(f"\n{'=' * 60}")

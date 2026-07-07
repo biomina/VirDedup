@@ -374,7 +374,11 @@ if __name__ == "__main__":
     parser.add_argument("--gisaid-meta", default=None, help="GISAID metadata Excel path")
     parser.add_argument("--gisaid-fasta", default=None, help="GISAID FASTA path")
     parser.add_argument("--output-dir", default=None, help="Output directory for deduped files")
+    parser.add_argument("--min-seq-length", type=int, default=7000,
+                        help="Minimum sequence length to process (default: 7000; 0 = no filter)")
     args = parser.parse_args()
+
+    config.MIN_SEQUENCE_LENGTH = args.min_seq_length
 
     if args.genbank_meta is not None:
         config.GENBANK_METADATA = args.genbank_meta
