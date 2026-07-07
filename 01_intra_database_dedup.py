@@ -134,6 +134,14 @@ def dedup_genbank():
     # Parse harmonized fields
     print("  Parsing subtype, location, date, host ...")
     meta["Subtype"] = meta["Organism_Name"].apply(parse_subtype_genbank)
+    # Fall back to Isolate column for RSV[A/B] patterns
+    mask_empty = meta["Subtype"] == ""
+    iso_sub = meta.loc[mask_empty, "Isolate"].str.extract(r"^RSV([ABab])", expand=False)
+    iso_filled = iso_sub.dropna().str.upper()
+    meta.loc[iso_filled.index, "Subtype"] = iso_filled
+    # Fall back to Genotype column when organism name and isolate yield no subtype
+    mask_empty = meta["Subtype"] == ""
+    meta.loc[mask_empty, "Subtype"] = meta.loc[mask_empty, "Genotype"].str.strip().str.upper()
     loc_data = meta["Geo_Location"].apply(parse_location_genbank)
     meta["Country"] = loc_data.apply(lambda x: x[0])
     meta["Region"] = loc_data.apply(lambda x: x[1])
