@@ -125,6 +125,13 @@ def main():
             verify_cmd.append(flag)
     run_step("Verification: Checking results", verify_cmd)
 
+    # ── Step 4: Clean output ──────────────────────────────────────────────
+    run_step(
+        "Step 4: Clean deduplicated output",
+        [python, os.path.join(script_dir, "04_generate_clean_output.py"),
+         "--output-dir", output_dir],
+    )
+
     print(f"\n{'=' * 60}")
     print("  PIPELINE COMPLETE")
     print(f"{'=' * 60}")
