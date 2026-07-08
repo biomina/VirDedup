@@ -25,8 +25,8 @@ python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000
 # Remove edge-case GISAID copies (all categories)
 python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000 --remove-edge-copies
 
-# Remove only isolate-mismatch and country-mismatch edge copies (keep date)
-python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000 --remove-edge-isolate --remove-edge-country
+# Remove only isolate-mismatch edge copies (keep date)
+python run_pipeline.py --input-dir . --output-dir output --min-seq-length 7000 --remove-edge-isolate
 
 # No length filtering, remove all edge copies
 python run_pipeline.py --input-dir . --output-dir output --min-seq-length 0 --remove-edge-copies
@@ -34,7 +34,7 @@ python run_pipeline.py --input-dir . --output-dir output --min-seq-length 0 --re
 # Individual steps (each accepts overridable CLI paths)
 python 01_intra_database_dedup.py --genbank-meta genbank_meta.csv --genbank-fasta genbank_sequences.fasta --gisaid-meta gisaid_metadata.xlsx --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000
 python 02_cross_database_match.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --output-dir output
-python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000 [--remove-edge-isolate] [--remove-edge-date] [--remove-edge-country] [--remove-edge-other]
+python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000 [--remove-edge-isolate] [--remove-edge-date] [--remove-edge-other]
 python 04_generate_clean_output.py --output-dir output
 python verify_results.py --input-dir . --output-dir output --min-seq-length 7000
 ```
@@ -117,9 +117,8 @@ Assembles the final deduplicated datasets:
   MATCH records). Pass per-category flags to selectively remove GISAID copies:
   - `--remove-edge-isolate` — remove for isolate-mismatch edge cases
   - `--remove-edge-date` — remove for date-mismatch edge cases
-  - `--remove-edge-country` — remove for country-mismatch edge cases
   - `--remove-edge-other` — remove for other edge cases (including "Subtype: missing")
-  - `--remove-edge-copies` — shorthand for all four flags above
+  - `--remove-edge-copies` — shorthand for all three flags above
 
 ## Output Files
 
@@ -153,7 +152,7 @@ Reads all intermediate and output files independently and reports:
 ## Adapting to a New Pathogen
 
 1. **Subtype parsing** — override `parse_subtype_genbank` in `harmonize_metadata.py` if the default patterns (`virus <subtype>` or `<subtype> virus`) don't match your organism names
-2. **Edge-case copy policy** — use per-category flags (`--remove-edge-isolate`, `--remove-edge-date`, `--remove-edge-country`) to selectively remove GISAID copies per edge case reason, or `--remove-edge-copies` for all
+2. **Edge-case copy policy** — use per-category flags (`--remove-edge-isolate`, `--remove-edge-date`, `--remove-edge-other`) to selectively remove GISAID copies per edge case reason, or `--remove-edge-copies` for all
 3. **Exclusion list** — add lab/institution/visit codes to `EXCLUDED_SHARED_TOKENS` in `config.py` as needed
 4. **Normalization maps** — extend `COUNTRY_NORMALIZATION` and `HOST_NORMALIZATION` for your data
 

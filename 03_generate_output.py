@@ -255,6 +255,60 @@ def generate_output(remove_categories=frozenset()):
             matched_genbank_accessions.add(gb_acc)
             existing_gb.add(gb_acc)
 
+    kept_edge_gi_accessions = set()
+
+    # Edge cases to keep: add both GB and GI copies as EDGE records
+    if not edges_to_keep.empty:
+        existing_gb_keep = {r["Primary_Accession"] for r in dedup_records}
+        for idx, edge_row in edges_to_keep.iterrows():
+            gb_acc = edge_row.get("GenBank_Accession", "")
+            gi_acc = edge_row.get("GISAID_Accession", "")
+            if not gb_acc or not gi_acc:
+                continue
+
+            # GB copy (always kept for kept edge cases)
+            if gb_acc not in existing_gb_keep:
+                gb_row = gb_by_acc.get(gb_acc)
+                if gb_row is not None:
+                    rec = extract_metadata_row(gb_row, "GenBank", prefix="")
+                    rec["GISAID_Accession"] = gi_acc
+                    rec["Source"] = "GenBank"
+                    rec["Integration_Status"] = "EDGE"
+                    rec["Primary_Accession"] = gb_acc
+                    gi_row = gi_by_acc.get(gi_acc)
+                    if gi_row is not None and not rec.get("Lineage"):
+                        rec["Lineage"] = _v(gi_row.get("GISAID_Lineage", "")) or _v(gi_row.get("Lineage", ""))
+                    if gi_row is not None and not rec.get("Subtype"):
+                        rec["Subtype"] = _v(gi_row.get("Subtype", ""))
+                    add_source_metadata(rec, gb_row, "GenBank")
+                    add_source_metadata(rec, gi_row, "GISAID")
+                    add_source_metadata(rec, edge_row, "Edge")
+                    dedup_records.append(rec)
+                    existing_gb_keep.add(gb_acc)
+
+            # GI copy (also kept, marked EDGE) — guard against duplicate
+            if gi_acc not in matched_gisaid_accessions:
+                gi_row = gi_by_acc.get(gi_acc)
+                if gi_row is not None:
+                    rec = extract_metadata_row(gi_row, "GISAID", prefix="")
+                    rec["GISAID_Accession"] = gi_acc
+                    rec["Source"] = "GISAID"
+                    rec["Integration_Status"] = "EDGE"
+                    rec["Primary_Accession"] = gi_acc
+                    gb_row = gb_by_acc.get(gb_acc)
+                    if gb_row is not None and not rec.get("Lineage"):
+                        rec["Lineage"] = _v(gb_row.get("Lineage", ""))
+                    if gb_row is not None and not rec.get("Subtype"):
+                        rec["Subtype"] = _v(gb_row.get("Subtype", ""))
+                    add_source_metadata(rec, gi_row, "GISAID")
+                    add_source_metadata(rec, gb_row, "GenBank")
+                    add_source_metadata(rec, edge_row, "Edge")
+                    dedup_records.append(rec)
+
+            matched_gisaid_accessions.add(gi_acc)
+            matched_genbank_accessions.add(gb_acc)
+            kept_edge_gi_accessions.add(gi_acc)
+
     # GenBank-only records (not matched)
     for idx, row in gb_deduped.iterrows():
         acc = row.get("Accession", "")
@@ -318,6 +372,11 @@ def generate_output(remove_categories=frozenset()):
         acc = row.get("Accession", "")
         if acc not in matched_gisaid_accessions:
             fasta_entries[acc] = ("gi", None)
+
+    # Kept edge GI copies (their sequences go into FASTA with their own accession)
+    for gi_acc in kept_edge_gi_accessions:
+        if gi_acc not in fasta_entries:
+            fasta_entries[gi_acc] = ("gi", None)
 
     # Read and write sequences
     written_count = 0
@@ -553,11 +612,12 @@ def generate_output(remove_categories=frozenset()):
         "--- Edge case breakdown ----------------------------------------------",
     ]
     for group_label, count in sorted(edge_group_counts.items(), key=lambda x: -x[1]):
-        report_lines.append(f"  {count:>5,}  {group_label}")
-    if edge_removed_counts:
-        report_lines.append("")
-        for group_label, count in sorted(edge_removed_counts.items(), key=lambda x: -x[1]):
-            report_lines.append(f"        ({count:,} removed)")
+        removed = edge_removed_counts.get(group_label, 0)
+        if removed:
+            report_lines.append(f"  {count:>5,}  {group_label}  ({removed:,} removed)")
+        else:
+            report_lines.append(f"  {count:>5,}  {group_label}")
+    report_lines.append("")
     report_lines.extend([
         "",
         "--- Final deduplicated ----------------------------------------------",
@@ -608,6 +668,8 @@ if __name__ == "__main__":
     parser.add_argument("--edge-cases", default=None, help="Edge cases CSV")
     parser.add_argument("--genbank-fasta", default=None, help="Original GenBank FASTA")
     parser.add_argument("--gisaid-fasta", default=None, help="Original GISAID FASTA")
+    parser.add_argument("--genbank-meta", default=None, help="Original GenBank metadata CSV (for report counts)")
+    parser.add_argument("--gisaid-meta", default=None, help="Original GISAID metadata XLSX (for report counts)")
     parser.add_argument("--output-dir", default=None, help="Output directory for final files")
     parser.add_argument("--remove-edge-copies", action="store_true", default=False,
                        help="Shorthand for all --remove-edge-* flags (retain only GenBank copy for all edge cases)")
@@ -615,8 +677,6 @@ if __name__ == "__main__":
                        help="Remove GISAID copy for isolate-mismatch edge cases")
     parser.add_argument("--remove-edge-date", action="store_true", default=False,
                        help="Remove GISAID copy for date-mismatch edge cases")
-    parser.add_argument("--remove-edge-country", action="store_true", default=False,
-                       help="Remove GISAID copy for country-mismatch edge cases")
     parser.add_argument("--remove-edge-other", action="store_true", default=False,
                        help="Remove GISAID copy for other edge cases")
     parser.add_argument("--min-seq-length", type=int, default=7000,
@@ -631,8 +691,6 @@ if __name__ == "__main__":
         remove_categories.add("Isolate: structured name")
     if args.remove_edge_copies or args.remove_edge_date:
         remove_categories.add("Date: mismatch")
-    if args.remove_edge_copies or args.remove_edge_country:
-        remove_categories.add("Country: mismatch")
     if args.remove_edge_copies or args.remove_edge_other:
         remove_categories.add("Other")
         remove_categories.add("Subtype: missing")
@@ -649,6 +707,10 @@ if __name__ == "__main__":
         config.GENBANK_FASTA = args.genbank_fasta
     if args.gisaid_fasta is not None:
         config.GISAID_FASTA = args.gisaid_fasta
+    if args.genbank_meta is not None:
+        config.GENBANK_METADATA = args.genbank_meta
+    if args.gisaid_meta is not None:
+        config.GISAID_METADATA = args.gisaid_meta
     if args.output_dir is not None:
         config.set_output_dir(args.output_dir)
 

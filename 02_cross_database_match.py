@@ -45,23 +45,16 @@ import pandas as pd
 from tqdm import tqdm
 
 import config
-from harmonize_metadata import (
-    dates_match_at_best_granularity,
-    normalize_date_genbank,
-    normalize_date_gisaid,
-    parse_subtype_genbank,
-    parse_subtype_gisaid,
-    parse_location_genbank,
-    parse_location_gisaid,
-    normalize_country,
-    normalize_host,
-    parse_isolate_gisaid,
-)
+from harmonize_metadata import dates_match_at_best_granularity
 
 try:
     from rapidfuzz import fuzz
 except ImportError:
     raise ImportError("Please install rapidfuzz: pip install rapidfuzz")
+
+
+# Values treated as empty/missing across all metadata checks
+_EMPTY = frozenset(("", "nan", "na", "n/a", "none"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -158,7 +151,6 @@ def check_match(gb_row, gi_row):
     reasons.append("seq_hash_match")
 
     # [2] Subtype match
-    _EMPTY = frozenset(("", "nan", "na", "n/a", "none"))
     gb_subtype_raw = str(gb_row.get("Subtype", "")).strip().upper()
     gi_subtype_raw = str(gi_row.get("Subtype", "")).strip().upper()
     gb_subtype = "" if gb_subtype_raw.lower() in _EMPTY else gb_subtype_raw
@@ -176,8 +168,8 @@ def check_match(gb_row, gi_row):
     # [3] Country match (skip if missing on either side)
     gb_country = str(gb_row.get("Country", "")).strip()
     gi_country = str(gi_row.get("Country", "")).strip()
-    gb_country_missing = not gb_country or gb_country.lower() in ("nan", "na", "n/a", "none", "")
-    gi_country_missing = not gi_country or gi_country.lower() in ("nan", "na", "n/a", "none", "")
+    gb_country_missing = not gb_country or gb_country.lower() in _EMPTY
+    gi_country_missing = not gi_country or gi_country.lower() in _EMPTY
     if not gb_country_missing and not gi_country_missing:
         country_match = (gb_country.lower() == gi_country.lower())
         if country_match:
@@ -208,8 +200,8 @@ def check_match(gb_row, gi_row):
         gi_iso = str(gi_row.get("Isolate", "")).strip()
         isolates_alike = (
             gb_iso and gi_iso
-            and gb_iso.lower() not in ("nan", "na", "n/a", "none", "")
-            and gi_iso.lower() not in ("nan", "na", "n/a", "none", "")
+            and gb_iso.lower() not in _EMPTY
+            and gi_iso.lower() not in _EMPTY
             and (fuzz.partial_ratio(gb_iso.lower(), gi_iso.lower()) == 100
                  or (has_shared_id(gb_iso, gi_iso)
                      and fuzz.token_sort_ratio(gb_iso.lower(), gi_iso.lower()) >= config.ISOLATE_SIMILARITY_THRESHOLD))
@@ -228,7 +220,7 @@ def check_match(gb_row, gi_row):
     gb_isolate = str(gb_row.get("Isolate", "")).strip()
     gi_isolate = str(gi_row.get("Isolate", "")).strip()
     # Treat missing/NaN-like values as missing data, skip the check
-    if gb_isolate and gi_isolate and gb_isolate.lower() not in ("nan", "na", "n/a", "none", "") and gi_isolate.lower() not in ("nan", "na", "n/a", "none", ""):
+    if gb_isolate and gi_isolate and gb_isolate.lower() not in _EMPTY and gi_isolate.lower() not in _EMPTY:
         # GB isolate is a pure numeric code (7+ digits) — lab-assigned ID with
         # no semantic relationship to GISAID names. Skip the comparison and rely
         # on sequence + core metadata (subtype, country, date, length) instead.

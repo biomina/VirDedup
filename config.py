@@ -88,7 +88,7 @@ MIN_SEQUENCE_LENGTH = 7000  # only process near-complete genomes
 # Country name standardization: {raw: standard}
 COUNTRY_NORMALIZATION = {
     "Cape Verde": "Cabo Verde",
-    "Democratic Republic of the Congo": "Republic of the Congo",
+    "Democratic Republic of the Congo": "Democratic Republic of the Congo",
     "La Reunion": "Reunion",
     "US Virgin Islands": "United States",
     "USA": "United States",

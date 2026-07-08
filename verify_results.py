@@ -130,29 +130,19 @@ def main(remove_categories=frozenset()):
     print(f"  FASTA == metadata:         {'OK' if final_fasta == final_meta else 'MISMATCH!'}")
     print(f"  Removed FASTA == removed:  {'OK' if removed_fasta == removed_meta else 'MISMATCH!'}")
 
+    edges_to_remove = edge_cases[edge_cases["Category"].isin(remove_categories)].copy() if remove_categories else pd.DataFrame()
+    edge_removed_count = len(edges_to_remove)
+    edge_gi_removed = edges_to_remove["GISAID_Accession"].nunique() if not edges_to_remove.empty else 0
+    expected_removed = gb_removed + gi_removed + len(matches) + edge_removed_count
+    expected_kept = gb_deduped + gi_deduped - len(matches) - edge_gi_removed
     if remove_categories:
-        edges_to_remove = edge_cases[edge_cases["Category"].isin(remove_categories)].copy()
-        edge_removed_count = len(edges_to_remove)
-        edge_gi_unique = edges_to_remove["GISAID_Accession"].nunique() if not edges_to_remove.empty else 0
-        expected_removed = gb_removed + gi_removed + len(matches) + edge_removed_count
-        expected_kept = gb_deduped + gi_deduped - len(matches) - edge_gi_unique
         print(f"  Edges removed ({', '.join(sorted(remove_categories))}):         {edge_removed_count:>8,}")
-        print(f"  Expected removed (intra + cross-db + edge GI): {expected_removed:>8,}")
-        print(f"  Actual removed in CSV:                         {removed_meta:>8,}")
-        print(f"  Removal count check:  {'OK' if expected_removed == removed_meta else 'MISMATCH!'}")
-        print(f"  Expected kept (deduped GB+GI minus matches minus unique edge GI): {expected_kept:>8,}")
-        print(f"  Actual deduplicated:                                             {final_fasta:>8,}")
-        print(f"  Kept count check:    {'OK' if expected_kept == final_fasta else 'MISMATCH!'}")
-    else:
-        expected_removed = gb_removed + gi_removed + len(matches)
-        print(f"  Expected removed (intra + cross-db matches): {expected_removed:>8,}")
-        print(f"  Actual removed in CSV:                       {removed_meta:>8,}")
-        print(f"  Removal count check:      {'OK' if expected_removed == removed_meta else 'MISMATCH!'}")
-
-        expected_kept = gb_deduped + gi_deduped - len(matches)
-        print(f"  Expected kept (deduped GB+GI minus cross-db matches): {expected_kept:>8,}")
-        print(f"  Actual deduplicated:                                  {final_fasta:>8,}")
-        print(f"  Kept count check:        {'OK' if expected_kept == final_fasta else 'MISMATCH!'}")
+    print(f"  Expected removed (intra + cross-db + edge GI): {expected_removed:>8,}")
+    print(f"  Actual removed in CSV:                         {removed_meta:>8,}")
+    print(f"  Removal count check:  {'OK' if expected_removed == removed_meta else 'MISMATCH!'}")
+    print(f"  Expected kept (deduped GB+GI minus matches minus removed edge GI): {expected_kept:>8,}")
+    print(f"  Actual deduplicated:                                               {final_fasta:>8,}")
+    print(f"  Kept count check:    {'OK' if expected_kept == final_fasta else 'MISMATCH!'}")
 
     print("\nDone.")
 
@@ -167,8 +157,6 @@ if __name__ == "__main__":
                        help="Remove GISAID copy for isolate-mismatch edge cases")
     parser.add_argument("--remove-edge-date", action="store_true", default=False,
                        help="Remove GISAID copy for date-mismatch edge cases")
-    parser.add_argument("--remove-edge-country", action="store_true", default=False,
-                       help="Remove GISAID copy for country-mismatch edge cases")
     parser.add_argument("--remove-edge-other", action="store_true", default=False,
                        help="Remove GISAID copy for other edge cases")
     parser.add_argument("--min-seq-length", type=int, default=7000,
@@ -183,8 +171,6 @@ if __name__ == "__main__":
         remove_categories.add("Isolate: structured name")
     if args.remove_edge_copies or args.remove_edge_date:
         remove_categories.add("Date: mismatch")
-    if args.remove_edge_copies or args.remove_edge_country:
-        remove_categories.add("Country: mismatch")
     if args.remove_edge_copies or args.remove_edge_other:
         remove_categories.add("Other")
         remove_categories.add("Subtype: missing")

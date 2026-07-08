@@ -45,8 +45,6 @@ def main():
                         help="Remove GISAID copy for isolate-mismatch edge cases")
     parser.add_argument("--remove-edge-date", action="store_true", default=False,
                         help="Remove GISAID copy for date-mismatch edge cases")
-    parser.add_argument("--remove-edge-country", action="store_true", default=False,
-                        help="Remove GISAID copy for country-mismatch edge cases")
     parser.add_argument("--remove-edge-other", action="store_true", default=False,
                         help="Remove GISAID copy for other edge cases")
     parser.add_argument("--min-seq-length", type=int, default=7000,
@@ -105,11 +103,22 @@ def main():
     ]
     cmd3.append("--min-seq-length")
     cmd3.append(str(args.min_seq_length))
+    cmd3.append("--genbank-meta")
+    cmd3.append(gb_meta)
+    cmd3.append("--gisaid-meta")
+    cmd3.append(gi_meta)
     for flag in ("--remove-edge-copies", "--remove-edge-isolate", "--remove-edge-date",
-                  "--remove-edge-country", "--remove-edge-other"):
+                  "--remove-edge-other"):
         if getattr(args, flag.lstrip("-").replace("-", "_"), False):
             cmd3.append(flag)
     run_step("Step 3: Final output generation", cmd3)
+
+    # ── Step 4: Clean output ──────────────────────────────────────────────
+    run_step(
+        "Step 4: Clean deduplicated output",
+        [python, os.path.join(script_dir, "04_generate_clean_output.py"),
+         "--output-dir", output_dir],
+    )
 
     # ── Verification ──────────────────────────────────────────────────────
     verify_cmd = [
@@ -120,24 +129,21 @@ def main():
     verify_cmd.append("--min-seq-length")
     verify_cmd.append(str(args.min_seq_length))
     for flag in ("--remove-edge-copies", "--remove-edge-isolate", "--remove-edge-date",
-                  "--remove-edge-country", "--remove-edge-other"):
+                  "--remove-edge-other"):
         if getattr(args, flag.lstrip("-").replace("-", "_"), False):
             verify_cmd.append(flag)
     run_step("Verification: Checking results", verify_cmd)
-
-    # ── Step 4: Clean output ──────────────────────────────────────────────
-    run_step(
-        "Step 4: Clean deduplicated output",
-        [python, os.path.join(script_dir, "04_generate_clean_output.py"),
-         "--output-dir", output_dir],
-    )
 
     print(f"\n{'=' * 60}")
     print("  PIPELINE COMPLETE")
     print(f"{'=' * 60}")
     print(f"  Input:  {input_dir}")
     print(f"  Output: {output_dir}")
-    print(f"  Edge copies removed: {args.remove_edge_copies}")
+    active_flags = []
+    for flag in ("--remove-edge-isolate", "--remove-edge-date", "--remove-edge-other", "--remove-edge-copies"):
+        if getattr(args, flag.lstrip("-").replace("-", "_"), False):
+            active_flags.append(flag)
+    print(f"  Edge removal flags: {', '.join(active_flags) if active_flags else 'none'}")
 
 
 if __name__ == "__main__":
