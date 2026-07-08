@@ -1,7 +1,7 @@
 """
 Orchestrator for the VirDedup cross-database deduplication pipeline.
 
-Runs steps 1-3 sequentially via subprocess, passing file paths from
+Runs steps 1-4 sequentially via subprocess, passing file paths from
 command-line arguments. Every step can also be run independently.
 
 Usage:

@@ -5,11 +5,12 @@ A deterministic, rule-based pipeline that identifies and removes duplicate viral
 ## Pipeline Stages
 
 ```
-run_pipeline.py  (orchestrator — runs steps 1–3 + verification)
+run_pipeline.py  (orchestrator — runs steps 1–4 + verification)
       │
       ├── 01_intra_database_dedup.py      per-database dedup (SHA256 hash + core metadata)
-      ├── 02_cross_database_match.py      cross-database matching (6 deterministic rules)
+      ├── 02_cross_database_match.py      cross-database matching (5 deterministic rules)
       ├── 03_generate_output.py           final metadata, FASTA, report
+      ├── 04_generate_clean_output.py     clean column-subset output
       └── verify_results.py               independent consistency check
 ```
 
@@ -34,6 +35,7 @@ python run_pipeline.py --input-dir . --output-dir output --min-seq-length 0 --re
 python 01_intra_database_dedup.py --genbank-meta genbank_meta.csv --genbank-fasta genbank_sequences.fasta --gisaid-meta gisaid_metadata.xlsx --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000
 python 02_cross_database_match.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --output-dir output
 python 03_generate_output.py --deduped-gb-meta output/deduped_genbank_metadata.csv --deduped-gi-meta output/deduped_gisaid_metadata.csv --cross-matches output/cross_database_matches.csv --edge-cases output/edge_cases.csv --genbank-fasta genbank_sequences.fasta --gisaid-fasta gisaid_sequences.fasta --output-dir output --min-seq-length 7000 [--remove-edge-isolate] [--remove-edge-date] [--remove-edge-country] [--remove-edge-other]
+python 04_generate_clean_output.py --output-dir output
 python verify_results.py --input-dir . --output-dir output --min-seq-length 7000
 ```
 
@@ -77,16 +79,15 @@ Records with identical sequences but different metadata are **kept** at this sta
 
 ### Stage 2: Cross-Database Matching
 
-For sequences whose SHA256 hash appears in both databases, a 6-rule deterministic check classifies each pair:
+For sequences whose SHA256 hash appears in both databases, a 5-rule deterministic check classifies each pair:
 
-| Rule | Check | Fail Behavior |
-|------|-------|-------------|
-| 1. Sequence hash | Identical string | (prerequisite) |
-| 2. Subtype | Both present and equal | Not a duplicate |
-| 3. Country | Both present and equal | Not a duplicate (rejected) |
-| 4. Collection date | Match at coarsest common granularity | Edge case (if granularity differs) or rejected (if same granularity) |
-| 5. Sequence length | Both present and equal | Not a duplicate |
-| 6. Isolate name | Substring match OR shared ID token + similarity >= threshold | Edge case |
+| Rule | Check | Missing-value handling | Fail Behavior |
+|------|-------|----------------------|-------------|
+| 1. Sequence hash | Identical string | — | (prerequisite) |
+| 2. Subtype | Both present and equal | Skip check | Not a duplicate (rejected) |
+| 3. Country | Both present and equal | Skip check | Not a duplicate (rejected) |
+| 4. Collection date | Match at coarsest common granularity | Skip check | Edge case (if granularity differs) or rejected (if same granularity, unless isolates share a sample ID) |
+| 5. Isolate name | Substring match OR shared ID token + similarity >= threshold | Skip check | Edge case |
 
 #### Isolate Name Matching (`has_shared_id`)
 
@@ -106,15 +107,18 @@ The shared-token detection uses five independent rules:
 
 Assembles the final deduplicated datasets:
 
-- Cross-database matches -> keep GenBank copy, annotate with GISAID accession
+- Cross-database matches -> keep GenBank copy, annotate with GISAID accession.
+  If the GenBank subtype is missing, it is inherited from the matched GISAID record.
 - GenBank-only records -> kept as-is
 - GISAID-only records -> kept as-is
 - Intra-database duplicates -> removed (tracked with kept counterpart)
-- Edge cases -> kept as-is by default (both copies). Pass per-category flags to selectively remove GISAID copies:
+- Edge cases -> kept as-is by default (both copies). For edge cases where the
+  GenBank subtype is missing, it is inherited from the GISAID partner (same as
+  MATCH records). Pass per-category flags to selectively remove GISAID copies:
   - `--remove-edge-isolate` — remove for isolate-mismatch edge cases
   - `--remove-edge-date` — remove for date-mismatch edge cases
   - `--remove-edge-country` — remove for country-mismatch edge cases
-  - `--remove-edge-other` — remove for other edge cases
+  - `--remove-edge-other` — remove for other edge cases (including "Subtype: missing")
   - `--remove-edge-copies` — shorthand for all four flags above
 
 ## Output Files
@@ -124,7 +128,8 @@ All written to `output/`:
 | File | Description |
 |------|-------------|
 | `deduplicated_sequences.fasta` | One sequence per unique entry |
-| `deduplicated_metadata.csv` | Harmonized metadata with Integration_Status (MATCH / EDGE / GENBANK_ONLY / GISAID_ONLY) |
+| `deduplicated_metadata.csv` | Harmonized metadata with Integration_Status (MATCH / EDGE / GENBANK_ONLY / GISAID_ONLY); subtype inherited from GISAID partner for MATCH and removed EDGE records |
+| `clean_deduplicated_metadata.csv` | Column-subset of deduplicated_metadata.csv (core columns in fixed order + additive source columns with data) |
 | `removed_sequences.fasta` | All removed sequences with original headers |
 | `removed_sequences.csv` | Side-by-side removed + kept metadata with removal reason |
 | `cross_database_matches.csv` | Confirmed cross-database duplicates (GB kept, GI removed) |
@@ -167,12 +172,10 @@ Reads all intermediate and output files independently and reports:
   Confirmed duplicates:     13,480
   Edge cases (review):       1,681
 --- Edge case breakdown ----------------------------------------------
-  1,384  GB isolate is numeric code (7+ digits)
-    173  GB isolate is structured name
-     53  date differs by 8-30 days
-     42  date differs by 1-7 days
-     27  date differs by 31-365 days
-      2  date differs by >365 days
+  3,795  Isolate: numeric code
+  2,795  Isolate: structured name
+  1,208  Date: mismatch
+    618  Subtype: missing
 --- Final deduplicated ----------------------------------------------
   Total unique sequences:   56,227
   Total metadata records:   56,227

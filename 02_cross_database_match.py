@@ -4,7 +4,7 @@ Uses fixed-rule matching (no scoring) to identify duplicate records.
 
 A cross-database MATCH requires ALL of the following:
   [1] Sequence hash identical (exact nucleotide match)
-  [2] Subtype matches (A ↔ A or B ↔ B)
+  [2] Subtype matches (both present and equal); skip check if missing
   [3] Country matches (skip if missing on either side)
   [4] Collection date matches at best available granularity
   [5] Isolate name is similar enough:
@@ -18,15 +18,19 @@ A cross-database MATCH requires ALL of the following:
         d) Token substring containment (2022JECVB / JECVB)
         e) Single shared alphabetic token >=5 chars (YXLSLF type)
 
-Records meeting [1]+[2] but failing any of [3]-[5] are flagged as EDGE_CASE
-for manual review, EXCEPT:
-  - Country mismatch (both valid but differ) → not an edge case
-  - Collection date same granularity but differs → not an edge case
+Records passing [1] but failing any of [2]-[5] are flagged according to:
+  - Subtype mismatch → REJECT (not a duplicate)
+  - Subtype missing  → skip → continue to remaining checks
+  - Country mismatch (both valid but differ) → REJECT
+  - Collection date same granularity but differs → REJECT
+  - All other failures (isolate, date with different granularity,
+    date with shared isolate tokens) → EDGE_CASE for manual review
 
 Edge case categories:
-  - "Isolate: numeric code"    — GB isolate is pure 7+ digit code (UMC lab ID)
-  - "Isolate: structured name" — alphanumeric isolate, no shared ID token
-  - "Date: mismatch" / "Length: mismatch" — other metadata conflicts
+  - "Isolate: numeric code"     — GB isolate is pure 7+ digit code (UMC lab ID)
+  - "Isolate: structured name"  — alphanumeric isolate, no shared ID token
+  - "Date: mismatch"            — date conflict with ambiguous precision or shared ID
+  - "Subtype: missing"          — subtype unavailable, remaining metadata conflicts
 
 Outputs:
   cross_database_matches.csv  -- all confirmed match pairs

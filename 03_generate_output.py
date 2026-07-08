@@ -7,6 +7,11 @@ Reads intermediate outputs from steps 1 and 2, then produces:
   - removed_sequences.fasta        -- all removed sequences with original headers
   - removed_sequences.csv          -- side-by-side removed + kept metadata
   - deduplication_report.txt       -- summary statistics
+
+Subtype inheritance: for MATCH and EDGE records where the GenBank record
+has a missing/invalid subtype, the Subtype column is populated from the
+matched GISAID record's subtype. Only records without any partner
+(GENBANK_ONLY) remain empty.
 """
 import argparse
 import csv
