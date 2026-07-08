@@ -18,7 +18,6 @@ Outputs (per database):
 """
 import argparse
 import csv
-import re
 from collections import defaultdict
 
 import pandas as pd
@@ -28,7 +27,7 @@ from tqdm import tqdm
 import config
 from harmonize_metadata import (
     hash_sequence,
-    parse_subtype_genbank,
+    extract_rsv_subtype,
     parse_subtype_gisaid,
     parse_location_genbank,
     parse_location_gisaid,
@@ -134,70 +133,7 @@ def dedup_genbank():
 
     # Parse harmonized fields
     print("  Parsing subtype, location, date, host ...")
-    meta["Subtype"] = meta["Organism_Name"].apply(parse_subtype_genbank)
-    # Fall back to Isolate column for RSV[A/B] and HRSV[A/B] patterns anywhere in string
-    mask_empty = meta["Subtype"] == ""
-    iso_sub = meta.loc[mask_empty, "Isolate"].str.extract(
-        r"(?:H?RSV)([ABab])(?:[^A-Za-z]|$)", expand=False)
-    iso_filled = iso_sub.dropna().str.upper()
-    meta.loc[iso_filled.index, "Subtype"] = iso_filled
-    # Isolate patterns: Ken/X/A/ → A, Ken/X/B/ → B
-    mask_empty = meta["Subtype"] == ""
-    iso_sub = meta.loc[mask_empty, "Isolate"].str.extract(r"Ken/\d+/([ABab])/", expand=False)
-    iso_filled = iso_sub.dropna().str.upper()
-    meta.loc[iso_filled.index, "Subtype"] = iso_filled
-    # Isolate pattern: /BA/ → B (BA is an RSV-B genotype)
-    mask_empty = meta["Subtype"] == ""
-    iso_ba = meta.loc[mask_empty, "Isolate"].str.contains(r"(?<=/)BA(?=/)", na=False, regex=True)
-    meta.loc[iso_ba[iso_ba].index, "Subtype"] = "B"
-    # Isolate pattern: non-BA → non-BA (Kenyan samples)
-    mask_empty = meta["Subtype"] == ""
-    iso_nonba = meta.loc[mask_empty, "Isolate"].str.contains(r"non-BA", na=False, regex=True)
-    meta.loc[iso_nonba[iso_nonba].index, "Subtype"] = "non-BA"
-    # Isolate chunk-based subtype extraction: split on separators, check each chunk
-    mask_empty = meta["Subtype"] == ""
-    iso_series = meta.loc[mask_empty, "Isolate"].fillna("")
-    # Standalone A/B chunk or exact RSVA/RSVB chunk (case-insensitive)
-    chunk_a = iso_series.str.contains(
-        r"(?:^|[/_\-.:,; ])(?:RSV)?A(?:$|[/_\-.:,; ])", na=False, regex=True,
-        flags=re.IGNORECASE)
-    chunk_b = iso_series.str.contains(
-        r"(?:^|[/_\-.:,; ])(?:RSV)?B(?:$|[/_\-.:,; ])", na=False, regex=True,
-        flags=re.IGNORECASE)
-    # Prefer B over A if both appear in same isolate (takes last assignment)
-    meta.loc[mask_empty & chunk_b, "Subtype"] = "B"
-    meta.loc[mask_empty & chunk_a & (meta["Subtype"] == ""), "Subtype"] = "A"
-    # Flag chunks that start with RSV/HRSV/HRV followed by a non-A/B letter
-    flagged = meta.loc[mask_empty, "Isolate"].str.contains(
-        r"(?:^|[/_\-.:,; ])(?:H?RSV|HRV)[A-Za-z](?![ABab]|\s|[/_\-.:,;]|$)",
-        na=False, regex=True, flags=re.IGNORECASE)
-    if flagged.any():
-        print(f"  Warning: {flagged.sum()} records have RSV/HRSV/HRV followed by non-A/B "
-              "letter in Isolate (subtype not assigned)")
-    # Fall back to Genotype column when organism name and isolate yield no subtype
-    mask_empty = meta["Subtype"] == ""
-    meta.loc[mask_empty, "Subtype"] = meta.loc[mask_empty, "Genotype"].str.strip().str.upper()
-    # Standardise non-standard subtype values
-    def map_subtype(val):
-        if not isinstance(val, str) or not val.strip():
-            return val
-        s = val.strip().upper()
-        exact = {
-            "9320": "B", "CB1": "B", "OA1": "A", "ON1": "A", "SAA1": "A",
-            "THB": "B", "HRSV-A": "A", "HRSV-B": "B", "RSV A": "A", "RSV B": "B",
-            "RSVA": "A", "RSVB": "B", "RSV-B": "B", "RSVA/NA": "A", "RSVA/ON1": "A",
-            "RSVB/BA": "B",
-        }
-        if s in exact:
-            return exact[s]
-        if s.startswith("BA"):  return "B"
-        if s.startswith("GA"):  return "A"
-        if s.startswith("GB"):  return "B"
-        if s.startswith("NA"):  return "A"
-        if s.startswith("SAB"): return "B"
-        if s.startswith("ON"):  return "A"
-        return val
-    meta["Subtype"] = meta["Subtype"].apply(map_subtype)
+    meta = extract_rsv_subtype(meta)
     loc_data = meta["Geo_Location"].apply(parse_location_genbank)
     meta["Country"] = loc_data.apply(lambda x: x[0])
     meta["Region"] = loc_data.apply(lambda x: x[1])
