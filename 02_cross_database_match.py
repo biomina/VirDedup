@@ -20,7 +20,9 @@ A cross-database MATCH requires ALL of the following:
 
 Records passing [1] but failing any of [2]-[5] are flagged according to:
   - Subtype mismatch → REJECT (not a duplicate)
-  - Subtype missing  → skip → continue to remaining checks
+  - Subtype missing  → skip → continue to remaining checks;
+    if remaining metadata conflicts exist → REJECT (not edge case);
+    if remaining metadata agrees → MATCH
   - Country mismatch (both valid but differ) → REJECT
   - Collection date same granularity but differs → REJECT
   - All other failures (isolate, date with different granularity,
@@ -31,6 +33,7 @@ Edge case categories:
   - "Isolate: structured name"  — alphanumeric isolate, no shared ID token
   - "Date: mismatch"            — date conflict with ambiguous precision or shared ID
   - "Subtype: missing"          — subtype unavailable, remaining metadata conflicts
+    (categorised as such but treated as REJECT, not edge)
 
 Outputs:
   cross_database_matches.csv  -- all confirmed match pairs
@@ -345,6 +348,7 @@ def match_cross_database():
                     has_country_issue = any("country_mismatch" in r for r in reasons if isinstance(r, str))
                     if has_subtype_skip:
                         cat = "Subtype: missing"
+                        is_edge = False  # missing subtype + any other conflict → reject, not edge
                     elif has_iso_issue and re.match(r'^\d{7,}$', gb_iso):
                         cat = "Isolate: numeric code"
                     elif has_iso_issue:
