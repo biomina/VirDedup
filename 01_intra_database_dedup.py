@@ -66,7 +66,7 @@ def build_accession_to_hash(fasta_path: str, extract_acc_fn, min_length: int = 0
     return acc_to_hash, hash_to_headers
 
 
-def core_fields_match(group_df, subtype_col, country_col, date_col, length_col):
+def core_fields_match(group_df, subtype_col, country_col, date_col, length_col, isolate_col):
     """
     Check if all records in a group have the same core metadata fields.
     Returns True if all core fields are effectively identical.
@@ -90,6 +90,10 @@ def core_fields_match(group_df, subtype_col, country_col, date_col, length_col):
     # Lengths
     lengths = group_df[length_col].dropna().unique()
     if len(lengths) > 1:
+        return False
+    # Isolates
+    isolates = group_df[isolate_col].dropna().unique()
+    if len([i for i in isolates if i]) > 1:
         return False
     return True
 
@@ -163,7 +167,7 @@ def dedup_genbank():
         if len(group) == 1:
             kept_indices.append(group.index[0])
         else:
-            if core_fields_match(group, "Subtype", "Country", "Collection_Date_Norm", "Length"):
+            if core_fields_match(group, "Subtype", "Country", "Collection_Date_Norm", "Length", "Isolate"):
                 # Same metadata -> keep newest by Release_Date
                 group = group.copy()
                 group["_sort_date"] = group["Release_Date_Norm"].fillna("")
@@ -309,7 +313,7 @@ def dedup_gisaid():
         if len(group) == 1:
             kept_indices.append(group.index[0])
         else:
-            if core_fields_match(group, "Subtype", "Country", "Collection_Date_Norm", "Length"):
+            if core_fields_match(group, "Subtype", "Country", "Collection_Date_Norm", "Length", "Isolate"):
                 # Same metadata -> keep the first record (no reliable date field)
                 group = group.sort_values("_gisaid_order")
                 keep_idx = group.index[0]

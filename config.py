@@ -107,7 +107,7 @@ HOST_NORMALIZATION = {
 }
 
 # The core fields used to determine "same metadata" for intra-database dedup
-CORE_METADATA_FIELDS = ["Subtype", "Country", "Collection_Date_Norm", "Length"]
+CORE_METADATA_FIELDS = ["Subtype", "Country", "Collection_Date_Norm", "Length", "Isolate"]
 
 # Isolate name similarity threshold (rapidfuzz token_sort_ratio).
 # partial_ratio == 100 (one name is a substring of the other) also counts as
